@@ -1,0 +1,409 @@
+---
+title: "Analise Americanas"
+author: "gsh87"
+date: "junho 2018"
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: scroll
+    smooth_scroll: TRUE
+---
+
+<style type="text/css">
+
+.chart-title {  /* chart_title  */
+   font-size: 20px;
+</style>
+
+
+<!-- ################################################# -->
+
+```{r,echo=FALSE,include=FALSE}
+################################### 0 - Limpeza
+# removendo lixo da memoria
+rm(list=ls())
+set.seed(123)
+```
+
+```{r,echo=FALSE,results='hide',warning=FALSE,message=FALSE}
+## 1 - Pacotes
+options(repos=c(CRAN="http://vps.fmvz.usp.br/CRAN/"))
+library(pacman)    
+p_load(stats)     
+p_load(lmtest)    
+p_load(randtests) 
+p_load(rms)       
+p_load(forecast)  
+p_load(h2o)
+p_load(fBasics)   
+p_load(ggplot2)   
+p_load(ggthemes)  
+p_load(gridExtra) 
+p_load(plotly)    
+p_load(ggcorrplot) 
+p_load(magrittr)   
+p_load(dplyr)      
+p_load(knitr)       
+p_load(binomTools)   
+p_load(vcd)          
+p_load(DescTools)      
+p_load(corrplot)       
+p_load(Metrics)
+p_load(dummies)
+p_load(reshape2)       
+p_load(Amelia)
+p_load(flexdashboard)
+p_load(DT)
+p_load(glmnet)
+p_load(reshape2)
+
+```
+
+```{r,echo=FALSE,results='hide',warning=FALSE,message=FALSE}
+# carregamento da base de dados
+Base <- read.csv("Base_Dados.csv")
+
+```
+
+
+# Descritivas {data-orientation=rows}
+
+Row
+----------------------------
+### Estrutura do Estudo
+
+* Nesta primeira etapa, processamos uma analise descritva dos dados, buscando presença de outliers e colinearidades dos dados
+
+* Na segunda parte tentamos ajustar alguns classificadores.
+
+
+Row {.tabset .tabset-fade}
+----------------------------------
+### Quantidades de Nulos/Faltantes
+
+```{r,echo=FALSE,warning=FALSE,fig.align='center',warning=FALSE,message=FALSE}
+
+nomes <- names(Base)
+Missings <- NULL
+for(k in 1:length(nomes))
+{
+  Missings[k] <- sum(is.na(Base[,k]))/nrow(Base) %>% round(.,3)
+}
+Missings2 <-  round(100*Missings,2)
+Faltantes <- data.frame(Campos=nomes,Proporcao_faltantes=Missings2) %>% arrange(.,desc(Proporcao_faltantes))
+
+BaseFaltantes <- Faltantes %>% filter(Proporcao_faltantes>0)
+
+Grafico1 <- ggplot(BaseFaltantes,aes(x=Campos,y=Proporcao_faltantes))+
+  geom_bar(stat="identity",col="blue",fill="royalblue",alpha=0.5) + 
+  labs(title="Distribuição de Missings",subtitle="Nota-se que os campos capacidade, peso e tempo de garantia são as variaveis com mais missings",x="Campos", y="Freq.Relativa de missings")+
+  geom_text(aes(x=Campos,y=Proporcao_faltantes,label=Proporcao_faltantes),vjust=-0.5)+theme(axis.text.x =element_text(size  = 10,angle = 45,hjust = 1,  vjust = 1))
+Grafico1
+
+```
+
+
+### Outra visualização
+
+```{r,echo=FALSE,warning=FALSE,fig.align='center',warning=FALSE,message=FALSE}
+Base_Quantitativas <- Base %>% select("ALTURA","LARGURA","PESO","PROFUNDIDADE","TEMPO_GARANTIA","CAPACIDADE_.L.","ITEM_PRICE")
+
+ggplot_missing <- function(x){
+  
+  x %>% 
+    is.na %>%
+    melt %>%
+    ggplot(data = .,
+           aes(x = Var2,
+               y = Var1)) +
+    geom_raster(aes(fill = value)) +
+    scale_fill_grey(name = "",
+                    labels = c("Presente","Missing")) +
+    theme_minimal() + 
+    theme(axis.text.x  = element_text(angle=45, vjust=0.5)) + 
+    labs(x = "Campos",
+         y = "linhas / Observacoes",
+         title="Missings nas variaveis quantitativas")
+}
+ggplot_missing(Base_Quantitativas)
+```
+
+
+Row 
+-------------------------------------
+### Correlação entre as variaveis quantitativas
+
+```{r,echo=FALSE,warning=FALSE,fig.align='center',warning=FALSE,message=FALSE}
+
+correlacao <- Base %>% select("ALTURA","LARGURA","PROFUNDIDADE","PESO","TEMPO_GARANTIA") %>% cor(.,use = "complete.obs",method = "pearson")
+Grafico2 <- ggcorrplot(correlacao, hc.order = TRUE,
+                 type = "lower", 
+                 lab = TRUE, 
+                 lab_size = 3, 
+                 title="Correlação de Pearson")+labs(subtitle="Nota-se baixa correlação entre as variaveis quantitativas")
+Grafico2
+
+```
+
+Row  {.tabset .tabset-fade}
+-------------------------------------
+### Distribuição das variaveis quantitativas
+```{r,echo=FALSE,warning=FALSE,fig.align='center',warning=FALSE,message=FALSE}
+Base_Quantitativas <- Base %>% select("ALTURA","LARGURA","PESO","PROFUNDIDADE","TEMPO_GARANTIA") 
+teste <- melt(Base_Quantitativas,na.rm=FALSE)
+
+Base_Empilhada <- Base %>% select(ALTURA) %>% mutate(campo="ALTURA") %>% `colnames<-`(c("Valor", "Campo"))
+Base_Empilhada2 <- Base %>% select(LARGURA) %>% mutate(campo="LARGURA") %>% `colnames<-`(c("Valor", "Campo"))
+Base_Empilhada3 <- Base %>% select(PESO) %>% mutate(campo="PESO") %>% `colnames<-`(c("Valor", "Campo"))
+Base_Empilhada4 <- Base %>% select(PROFUNDIDADE) %>% mutate(campo="PROFUNDIDADE") %>% `colnames<-`(c("Valor", "Campo"))
+Base_Empilhada5 <- Base %>% select(TEMPO_GARANTIA) %>% mutate(campo="TEMPO_GARANTIA") %>% `colnames<-`(c("Valor", "Campo"))
+
+Base_Empilhada_f <- rbind(Base_Empilhada,Base_Empilhada2,Base_Empilhada3,Base_Empilhada4,Base_Empilhada5) 
+
+grafico2<-ggplot(Base_Empilhada_f, aes(x = as.factor(Campo), y = as.numeric(Valor), fill=as.factor(Campo)))
+grafico2 <- grafico2+ geom_boxplot()
+grafico2 <- grafico2+labs(title="distribuição dos valores",x="Campo",y="Valor",subtitle="Nota-se presença de outliers no Campo Peso")
+grafico2 <- grafico2+ guides(fill = "none")
+grafico2
+
+```
+
+
+### Distribuição das variaveis quantitativas sem o Campo Peso
+
+```{r,echo=FALSE,warning=FALSE,fig.align='center',warning=FALSE,message=FALSE}
+
+Base_Empilhada_f2 <- Base_Empilhada_f %>% filter(Campo!="PESO")
+
+grafico3<-ggplot(Base_Empilhada_f2, aes(x = as.factor(Campo), y = as.numeric(Valor), fill=as.factor(Campo)))
+grafico3 <- grafico3+ geom_boxplot()
+grafico3 <- grafico3+labs(title="distribuição dos valores",x="Campo",y="Valor",subtitle="Nota-se presença de poucos outilers")
+grafico3 <- grafico3+ guides(fill = "none")
+grafico3
+
+```
+
+Row
+----------------------------
+### Algumas Observações
+
+* Fiz apenas uma analise das variaveis quantitativas, uma analise das variaveis qualitativas também é necessário. Usualmente para o estudo da associação entre variaveis qualitativas a tabela de contigencia com o teste Qui-Quadrado de aderência poderia ser usado.
+
+* Nota-se presença de bastante missings na base, as variaveis Capacidade e Tempo de garantia nao entraram como variaveis explicativas nos modelos, devido a grande quantidade de Missings.
+
+* Nota-se ainda a presença de alguns outliers na variaveis quantitativas com destaque para o Peso. De qualquer forma não exclui tais linhas da base que será usada na modelagem (questão de tempo).
+
+
+# Aplicação dos dados aos modelos {data-orientation=rows}
+
+```{r,echo=FALSE,warning=FALSE,fig.align='center',warning=FALSE,message=FALSE}
+
+## tudo uppercase
+Base %<>% mutate_all(funs(toupper))
+
+Base_Categoricas <- Base %>% select("COMPOSICAO","COR","FORMATO","MARCA","PARA_LAVA_LOUCAS","PARA_MICRO_ONDAS","TEM_FERRO_FUNDIDO","TEM_GRELHA","TEM_TAMPA","TIPO_PRODUTO","INTERESTED") %>% mutate_if(is.character,as.factor) %>% mutate_if(is.numeric,as.factor) %>% as.data.frame()
+
+Base_Quantitativas <- Base %>% select("ALTURA","LARGURA","PESO","PROFUNDIDADE","TEMPO_GARANTIA")
+
+
+Base_Final <- data.frame(Base_Categoricas,Base_Quantitativas)
+
+```
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+### Modelo: Logistico com LASSO
+
+```{r,echo=FALSE,fig.align="center",warning=FALSE,include=FALSE,message=FALSE}
+# Base_Logistico <- Base_Final %>% select(-TEMPO_GARANTIA) %>% na.omit()
+# 
+# Taxa_Cross <- 0.75
+# indice <- sample(1: nrow(Base_Final),round(Taxa_Cross*nrow(Base_Final)))
+# Train <- Base_Final[indice,]
+# Test <- Base_Final[-indice,]
+
+# inicializacao do h2o
+h2o.no_progress()
+h2o.init(nthreads=-1)
+
+# carregamento da base de dados
+Base_h2o_full <- as.h2o(x = Base_Final, destination_frame = "Base_Final")
+
+Base_h2o_full[,c("COMPOSICAO","COR","FORMATO","MARCA","PARA_LAVA_LOUCAS","PARA_MICRO_ONDAS","TEM_FERRO_FUNDIDO","TEM_GRELHA","TEM_TAMPA","TIPO_PRODUTO","INTERESTED")] <- as.factor(Base_h2o_full[,c("COMPOSICAO","COR","FORMATO","MARCA","PARA_LAVA_LOUCAS","PARA_MICRO_ONDAS","TEM_FERRO_FUNDIDO","TEM_GRELHA","TEM_TAMPA","TIPO_PRODUTO","INTERESTED")])
+
+splits <- h2o.splitFrame(Base_h2o_full, ratios = 0.75, seed = 12345)
+
+# train
+Base_Train_h2o <- splits[[1]]
+# Test
+Base_test_h2o <- splits[[2]]
+
+
+# Preparacao das variaveis resposta e variaveis dependentes
+y <- "INTERESTED"  # resposta
+x <- setdiff(names(Base_Train_h2o),y)   # dependente
+
+```
+
+
+```{r,echo=FALSE,fig.align="center",warning=FALSE,message=FALSE}
+
+Logistic_fit2 <- h2o.glm(x = x, 
+                    y = y, 
+                    training_frame = Base_Train_h2o,
+                    model_id = "Logistic_fit2",
+                    lambda_search=TRUE,
+                    family = "binomial",
+                    balance_classes = TRUE,
+                    nfolds=5)
+
+# predicao
+Logistic_perf2 <- h2o.performance(model = Logistic_fit2,
+                             newdata = Base_test_h2o)
+
+AUC_Logistic_Test <- h2o.auc(Logistic_perf2)
+AUC_Logistic_Train <- h2o.auc(Logistic_fit2,train=TRUE)
+
+plot(Logistic_perf2,type="roc",col="royalblue")
+text(0.9,0.1,paste("AUC = ",round(AUC_Logistic_Test,2),sep=""))
+
+# Base de AUCS
+Base_AUC <- data.frame(Modelo="Logistico",AUC_Test=AUC_Logistic_Test,AUC_Train=AUC_Logistic_Train)
+
+```
+
+### Variaveis Importantes
+
+```{r,echo=FALSE,fig.align="center",warning=FALSE,message=FALSE}
+#h2o.std_coef_plot(Logistic_fit2,num_of_features = 20)
+Var_IMPORT <- h2o.varimp(Logistic_fit2) %>% as.data.frame() 
+Var_IMPORT[1:15,]
+```
+
+
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+### Modelo: Random Forest
+
+```{r,echo=FALSE,fig.align="center",fig.height=7,fig.width=7}
+rf_fit2 <- h2o.randomForest(x=x,
+                           y=y,
+                           training_frame = Base_Train_h2o,
+                           model_id = "rf_fit2",
+                           seed=1,
+                           nfolds=5)
+# predicao
+rf_perf2 <- h2o.performance(model=rf_fit2,
+                            newdata =Base_test_h2o)
+
+AUC_rf_Test <- h2o.auc(rf_perf2)
+AUC_rf_Train <- h2o.auc(rf_fit2,train=TRUE)
+
+plot(rf_perf2,type="roc",col="royalblue")
+text(0.9,0.1,paste("AUC = ",round(AUC_rf_Test,2),sep=""))
+
+Base_AUC2 <- data.frame(Modelo="Random",AUC_Test=AUC_rf_Test,AUC_Train=AUC_rf_Train)
+Base_AUC <- rbind(Base_AUC,Base_AUC2)
+```
+
+### Variaveis Importantes
+
+```{r,echo=FALSE,fig.align="center",fig.height=7,fig.width=7}
+h2o.varimp_plot(rf_fit2,num_of_features = 25)
+```
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+### Modelo: GBM
+
+```{r,echo=FALSE,fig.align="center",fig.height=7,fig.width=7}
+gbm_fit2 <- h2o.gbm(x=x,
+                    y=y,
+                    training_frame = Base_Train_h2o,
+                    distribution = "bernoulli",
+                    nfolds=5,
+                    model_id = "gbm_fit2",
+                    seed=1)
+
+# Predicao
+gbm_perf2 <- h2o.performance(gbm_fit2,newdata=Base_test_h2o)
+
+AUC_gbm_Test <- h2o.auc(gbm_perf2)
+AUC_gbm_Train <- h2o.auc(gbm_fit2,train=TRUE)
+
+plot(gbm_perf2,type="roc",col="royalblue")
+text(0.9,0.1,paste("AUC = ",round(AUC_gbm_Test,2),sep=""))
+
+Base_AUC3 <- data.frame(Modelo="GBM",AUC_Test=AUC_gbm_Test,AUC_Train=AUC_gbm_Train)
+Base_AUC <- rbind(Base_AUC,Base_AUC3)
+
+```
+
+### Variaveis Importantes
+
+```{r,echo=FALSE,fig.align="center",fig.height=7,fig.width=7}
+h2o.varimp_plot(gbm_fit2,num_of_features = 25)
+```
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+### Modelo:  Redes
+
+```{r,echo=FALSE,fig.align="center",fig.height=7,fig.width=7}
+redes_fit2 <- h2o.deeplearning(x=x,
+                               y=y,
+                               training_frame = Base_Train_h2o,
+                               model_id = "redes_fit2",
+                               epochs = 5,
+                               hidden = 8,
+                               seed=1)
+# Predicao
+redes_perf2 <- h2o.performance(redes_fit2,newdata = Base_test_h2o)
+
+AUC_redes_Test <- h2o.auc(redes_perf2)
+AUC_redes_Train <- h2o.auc(redes_fit2,train=TRUE)
+
+
+plot(redes_perf2,type="roc",col="royalblue")
+text(0.9,0.1,paste("AUC = ",round(AUC_redes_Test,2),sep=""))
+
+Base_AUC4 <- data.frame(Modelo="Redes",AUC_Test=AUC_redes_Test,AUC_Train=AUC_redes_Train)
+Base_AUC <- rbind(Base_AUC,Base_AUC4) %>% data.frame()
+
+```
+
+### Variaveis Importantes
+
+```{r,echo=FALSE,fig.align="center",fig.height=7,fig.width=7}
+
+#h2o.varimp_plot(redes_fit2,num_of_features = 25)
+Var_IMPORT2 <- h2o.varimp(redes_fit2) %>% as.data.frame()
+Var_IMPORT2[1:15,]
+```
+
+
+Row
+------------------------------
+### Algumas Observações
+* Conforme mencionado na analise descritiva, algumas variaveis não entraram nos modelos, destacamos as seguintes:
+     + **Capacidade** : Devido a grande quantidade de Missings.
+     + **Tempo de Garantia**: Devido a grande quantidade de Missings.
+     + **Item_ID**: Por ser um identificador.
+     + **ITEM_PRICE**: Erro de Formatação do campo, não está trazendo os valores reais.
+     + **TIPO_WOK**: Por ser um subcampo do campo: TIPO_PRODUTO.
+     + **Session_ID** : Por ser um identificador (Poderia ser usado para modelagem de RNR).
+ 
+* Em todos os modelos as variaveis que mais se destacaram foram:
+      + **TIPO_PRODUTO**
+      + **MARCA**
+      
+* Acredito que a proxima etapa seria a retirada dos outliers das variaveis quantativas e a analise das associações entre as variaveis categoricas(usando conforme mencionado as tabelas de contigencia ou dupla entrada, juntamente com o teste Qui-Quadrado para avaliar o grau de associação). Tudo isso objetivo aumentar o poder preditivo dos modelos (claramente não apresentaram bons resultados).
+
+* Um aspecto que é importante salientar, foi que usamos basicamente o método Holdout para a validação, acredito que uma vez melhorado a qualidade dos modelos (se possivel) uma analise da estabilidade do modelo também se faz necessária. Para tal tarefa eu uso o seguinte procedimento:
+
+      + Faço o split da base em Treino e Teste um numero fixo de vezes k.
+      + Para cada par obtido (Treino,Teste) processo o modelo, obtendo as metricas de acuracia (AUC) em cima do Treino (Ajuste) e do Teste(predito).
+      + Após K passos teremos dois vetores de tamanho K que representam o AUC do ajuste e o AUC do treino.
+      + Com os vetores acima para cada modelo, podemos escolher aquele que apresenta menor variabilidade, ou seja, mais estável.
+      
+      
